@@ -1,0 +1,156 @@
+---
+title: "clustering"
+output: html_document
+---
+
+# Intro
+
+## 1. Library
+
+```{r, warning=FALSE}
+library(tidyverse)
+library(factoextra)
+library(ggplot2)
+library(reshape2)
+```
+
+```{r}
+whis <- read.csv("data/whiskies.txt")
+head(whis)
+```
+
+### 1.1 Data Cleansing
+
+```{r}
+# meng-assign nilai dari kolom Distillery menjadi rownames
+rownames(whis) <- whis$Distillery
+
+# membuang kolom yang tidak digunakan
+whis <- whis %>% 
+  select(-c(RowID, Distillery, Postcode, Latitude, Longitude))
+
+head(whis)
+```
+
+### 1.2 Exploratory Data
+
+#### 1.2.1 Cek NA
+
+```{r}
+colSums(is.na(whis))
+```
+
+```{r}
+summary(whis)
+```
+
+## 2. K-Means
+
+```{r, warning=FALSE}
+RNGkind(sample.kind = "Rounding")
+set.seed(100)
+
+whis_k <- kmeans(whis, centers = 3) ## Centers = kluster menjadi 3
+```
+
+### 2.1 Banyaknya iterasi
+
+```{r}
+whis_k$iter
+```
+
+### 2.2 Banyaknya observasi
+
+```{r}
+whis_k$size
+```
+
+### 2.3 Melihat centroid
+
+```{r}
+whis_k$centers
+```
+
+### 2.4 Label cluster untuk tiap observasi
+
+```{r}
+head(whis_k$cluster)
+```
+
+### 2.5 Goodnes of Fit
+
+```{r}
+# cek nilai WSS dan rasio BSS/TSS
+sum(whis_k$withinss) # ekuivalen dengan $tot.withinss
+whis_k$tot.withinss # WSS
+
+whis_k$betweenss / whis_k$totss # rasio BSS/TSS
+```
+
+### 2.6 Pemilihan K Optimum
+
+```{r}
+fviz_nbclust(whis, FUNcluster = kmeans, method = "wss")
+```
+
+### 2.7 Buat ulang K-Means dengan K yang optimum
+
+```{r, warning=FALSE}
+RNGkind(sample.kind = "Rounding")
+set.seed(100)
+
+# berdasarkan elbow method, k = 5 (subjektif)
+whisky_km_5 <- kmeans(whis, centers = 5)
+```
+
+### 2.8 Interpretasi
+
+```{r, warning=FALSE}
+# memasukkan label cluster ke data awal
+whis$kelompok <- whisky_km_5$cluster
+
+# melakukan profiling dengan summarise data
+whis %>% 
+  group_by(kelompok) %>% 
+  summarise_all(mean)
+```
+
+### 2.9 Product Recommender
+
+```{r}
+# cek Laphroig ada di kelompok mana?
+whis["Laphroig", ] # kelompok 2
+
+# cek whisky apa saja yang ada di kelompok 2
+whis %>% 
+  filter(kelompok == 2)
+```
+
+## 3. Visualisasi
+
+### 3.1 Visualisasi Clustering
+
+```{r}
+# nilai centroid
+whisky_profile <- whis %>% 
+  mutate(kelompok = as.factor(kelompok)) %>% 
+  group_by(kelompok) %>% 
+  summarise_all(mean)
+
+# reshaping data
+whisky_melt <- melt(whisky_profile, id.vars = "kelompok")
+
+# visualisasi data
+ggplot(whisky_melt, 
+       aes(x = kelompok, y = value, fill = kelompok)) + 
+  geom_col() + 
+  facet_wrap(~variable)
+```
+
+**Profiling: **
+
+- Cluster 1: honey, winey, nutty, malty, fruity paling tinggi diantara kelompok lainnya -> whisky manis nano-nano
+- Cluster 2: body, smoky, medicinal, tobacco paling tinggi -> whisky pahit 
+- Cluster 3: body paling rendah, floral paling tinggi -> whisky manis aroma bunga
+- Cluster 4: tidak ada yang mendominasi < 2 -> whisky balance/light
+- Cluster 5: sweet, spicy paling tinggi -> whisky manis pedas
